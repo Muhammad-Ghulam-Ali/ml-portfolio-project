@@ -41,6 +41,7 @@ Notebook: `01_classification_eda.ipynb`
 - About 3,000 orders, 12 features plus the target
 - No missing values and no duplicate rows
 - Class balance: 64.5% returned, 35.5% kept. This is mild imbalance. A model that always says "returned" would get 64.5% accuracy, so that is the number any model has to beat.
+- Imbalance handling: not needed. The split is mild, and class_weight="balanced" was tested in the grid search but not selected. SMOTE was not used.
 - Checked data types, descriptive statistics, distributions, box plots for outliers, and a correlation heatmap of the numeric columns.
 - Checked for negative values in the numeric columns.
 
