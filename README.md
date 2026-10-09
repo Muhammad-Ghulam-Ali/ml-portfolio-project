@@ -147,7 +147,7 @@ The test scores match the CV scores closely (CV F1 0.955, test F1 0.953), so the
 - F1 is the second one, because it stops us from gaining recall by flagging everything.
 - Accuracy alone is not enough because of the 64.5% majority class.
 
-![Final evaluation](ml/figures/evaluation/final_evaluation.png)
+![Final evaluation](ml/figures/evaluation/model_performance.png)
 
 ## 8. Final model selection
 
