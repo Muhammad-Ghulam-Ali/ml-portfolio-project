@@ -3,7 +3,7 @@
 Two supervised learning problems solved end to end, with a React and FastAPI web app on top of the final models.
 
 - Part 1: Classification, predicting whether an e-commerce order will be returned (done)
-- Part 2: Regression, predicting influencer campaign revenue (coming soon)
+- Part 2: Regression, predicting influencer campaign revenue (done)
 - Part 3: Web app with React frontend and FastAPI backend (coming soon)
 
 ## Repo structure
@@ -182,6 +182,140 @@ Saved to `backend/models/return_model.joblib` and loaded by the FastAPI backend.
 
 ---
 
-# Part 2: Regression (coming soon)
+# Part 2: Influencer Campaign Revenue Regression
+
+## 1. Problem definition
+
+Brands pay influencers and boost their posts without knowing how much revenue the campaign will bring back. If the business can estimate revenue before spending, it can pick better creators and set budgets with less guessing.
+
+- Target: `campaign_revenue_usd` (sales within 14 days of the post)
+- Task: regression
+- Features (12): `creator_followers_k`, `engagement_rate_pct`, `paid_boost_spend_usd`, `avg_watch_time_sec`, `promo_discount_pct`, `content_format`, `audience_intent_tier`, `caption_word_count`, `hashtags_used_count`, `creator_phone_os`, `contract_payment_terms`, `posting_day_weather`
+- How ML helps: the model predicts the revenue of a planned campaign in dollars, so campaigns can be compared and budgeted before they run.
+
+## 2. Data understanding and EDA
+
+Notebook: `05_regression_eda.ipynb`
+
+- 3,000 campaigns, 12 features plus the target
+- No missing values and no duplicate rows
+- Target: close to a bell shape with a slight right tail. Mean about 16,679 and median about 16,481, range about 2,900 to 32,500. No log transform was needed.
+- Numeric features are roughly uniform, with no skew to fix. `promo_discount_pct` only takes 6 values (0, 5, 10, 15, 20, 25).
+- Correlation with the target: `engagement_rate_pct` 0.54, `creator_followers_k` 0.52, `paid_boost_spend_usd` 0.46, `avg_watch_time_sec` 0.20, `promo_discount_pct` 0.20. `caption_word_count` and `hashtags_used_count` are close to zero.
+- The features are almost uncorrelated with each other, so multicollinearity is not a problem.
+- Categorical columns were checked against the target with box plots. `content_format` clearly matters: median revenue is about 14,700 for Static-Carousel, 16,500 for Short-Video-Reel and 18,000 for YouTube-Deep-Dive. `creator_phone_os` shows the same median and spread for both values, so it looks like noise. [fill in: audience_intent_tier, contract_payment_terms, posting_day_weather]
+
+## 3. Data preprocessing
+
+Notebook: `06_regression_pipeline.ipynb`
+
+**Cleaning**
+- No nulls, no duplicates and no feature outliers, so no cleaning step was needed.
+- The box plot of the target showed about 10 points beyond the whiskers. They were left in on purpose. They run on continuously from the whisker, they are real high and low performing campaigns, and capping the target would teach the model to under predict big campaigns and make the error scores look better than they are.
+
+**Encoding and scaling** (built in `src/pipeline.py`)
+- Numeric columns: median imputation, then standard scaling
+- Categorical columns: most frequent imputation, then one hot encoding
+- Result: 7 numeric columns plus 14 one hot columns, 21 in total
+
+**Split**
+- 80% train and 20% test (2,400 and 600 rows)
+- Not stratified, because the target is continuous
+- `random_state=42`
+
+## 4. Feature selection
+
+Feature selection runs inside the pipeline, after preprocessing, using `SelectKBest` with `f_regression`.
+
+- `f_regression` scores each of the 21 columns on its linear relationship with revenue and keeps the top `k`.
+- `k` was treated as a hyperparameter and tuned. The best value was 12, so 9 columns were dropped.
+- Because selection sits inside the pipeline, it is redone inside every CV fold, so nothing leaks from the validation part.
+- Kept: [fill in]
+- Dropped: [fill in]
+
+## 5. Models and cross validation
+
+Four models were compared in the same pipeline (preprocessing, then `f_regression` selection with k=10, then model), using 5-fold cross validation on the training set only.
+
+- **Linear Regression:** simple baseline, fast, easy to explain
+- **Random Forest:** handles non linear patterns and interactions
+- **XGBoost:** gradient boosting, usually strong on tabular data
+- **LightGBM:** another boosting model, fast on smaller datasets
+
+**CV results (mean of 5 folds)**
+
+| Model | R2 % | MAE | RMSE | Error % |
+|---|---|---|---|---|
+| Linear Regression | 97.286 | 612.740 | 778.038 | 4.065 |
+| Random Forest | 91.106 | 1110.891 | 1407.840 | 7.464 |
+| XGBoost | 95.189 | 822.418 | 1036.210 | 5.423 |
+| LightGBM | 96.966 | 647.184 | 821.937 | 4.293 |
+
+Error % is the mean absolute percentage error (MAPE): each miss is divided by that campaign's own actual revenue, then averaged. It turns a dollar error into something the business can read without knowing the typical revenue.
+
+Linear Regression was ahead on all four metrics. The tree models ran on fixed settings and were not tuned.
+
+## 6. Hyperparameter tuning
+
+GridSearchCV (5-fold, scored on RMSE) on the Linear Regression pipeline. Linear Regression has no settings that change the fit here, so the only thing tuned was how many columns to keep.
+
+| Parameter | Values tried | Best |
+|---|---|---|
+| `selector__k` | 5, 8, 10, 12, 15, 18, all | 12 |
+
+- Best CV RMSE: 777.66, against 778.04 before tuning
+- The gain is under one dollar. The linear model was already at its ceiling, and the 9 columns dropped were adding nothing.
+
+## 7. Model evaluation
+
+The tuned model was evaluated once on the untouched test set (600 campaigns).
+
+| Metric | Test score |
+|---|---|
+| R2 | 97.254% |
+| MAE | 624.28 |
+| RMSE | 797.20 |
+| Error % (MAPE) | 4.218% |
+
+The test scores match the CV scores closely (CV R2 97.29%, RMSE 778, Error 4.07%), so the model is not overfitting.
+
+**Which metric matters most for the business**
+- Error % and MAE show the typical miss. The model is off by about 624 dollars, or about 4.2%, on an average campaign.
+- RMSE is higher because it punishes large misses more. It matters when a big miss means a badly set budget.
+- R2 shows how much of the variation in revenue the model explains, but it does not say how large the miss is in dollars, so it is not used alone.
+
+![Final evaluation](ml/figures/evaluation/regression_final_performance.png)
+
+## 8. Final model selection
+
+The final model is the tuned Linear Regression pipeline. Reasons:
+
+- Best CV scores on R2, MAE, RMSE and Error %
+- Test and CV agree
+- Instant predictions in the web app
+- Easy to explain, since each feature has a clear direction and size
+
+The tree models did not beat it. Revenue is mostly a linear function of these features, and on 3,000 rows trees only add variance. LightGBM came close (R2 96.97% against 97.29%). It was not tuned, so a tuned boosting model might close the gap, but with R2 already above 97% there is very little left to gain.
+
+Saved to `backend/models/revenue_model.joblib` and loaded by the FastAPI backend.
+
+## 9. Business interpretation
+
+- The model gives an expected revenue in dollars for a planned campaign. It can be used to compare creators and decide how much to spend on boosting.
+- Followers, engagement rate and paid boost spend are the main drivers. Content format also changes revenue, with YouTube deep dives earning the most at the median.
+- Phone OS looks like noise, so it should not drive creator choice.
+- With a typical miss of about 4%, the estimate is good enough for budgeting and for ranking campaigns. It is not an exact forecast for any single campaign.
+
+## 10. Limitations
+
+- 3,000 campaigns from one dataset. The relationships are very clean, which suggests simulated data. Real campaigns will be noisier, so an R2 above 97% is unlikely to carry over.
+- The model only learns linear effects. If real revenue has diminishing returns on spend, it will miss that.
+- Predictions outside the training range (for example creators with more than 450k followers or boost spend above about 4,500 dollars) are not reliable.
+- The model predicts revenue, not profit. Costs and creator fees are not included.
+- Error % divides by the actual revenue, so it breaks if a campaign earns close to zero. The lowest revenue here is about 2,900, so it is safe on this data.
+- The target outliers were kept on purpose, so the model has seen high and low campaigns, but it has few examples of them.
+- A quick look at baseline predictions on the test set was taken before cross validation. All model choices and tuning were made on CV only.
+
+---
 
 # Part 3: Web app (coming soon)
