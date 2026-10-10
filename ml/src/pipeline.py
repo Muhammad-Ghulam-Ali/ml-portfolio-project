@@ -3,11 +3,11 @@ from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.compose import ColumnTransformer
 
-def pipeline_builder(df):
+def pipeline_builder(df, exclude=()):
     try:
         num_cols = df.select_dtypes(include=['int', 'float']).columns.tolist()
-        num_cols = [c for c in num_cols if c not in ["size_bracketing_flag", "newsletter_subscriber", "return_risk_label"]]
-
+        num_cols = [c for c in num_cols if c not in exclude]
+        
         cat_cols = df.select_dtypes(include=['str','object']).columns.tolist()
 
         num_transformer = Pipeline(steps=[
@@ -30,4 +30,5 @@ def pipeline_builder(df):
         return preprocessor
 
     except Exception as e:
-        print(f"An error occurred:\n{e}")    
+        print(f"An error occurred:\n{e}")  
+        raise  
