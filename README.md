@@ -2,9 +2,9 @@
 
 Two supervised learning problems solved end to end, with a React and FastAPI web app on top of the final models.
 
-- Part 1: Classification, predicting whether an e-commerce order will be returned (done)
-- Part 2: Regression, predicting influencer campaign revenue (done)
-- Part 3: Web app with React frontend and FastAPI backend (coming soon)
+- Part 1: Classification, predicting whether an e-commerce order will be returned 
+- Part 2: Regression, predicting influencer campaign revenue 
+- Part 3: Web app with React frontend and FastAPI backend
 
 ## Repo structure
 
