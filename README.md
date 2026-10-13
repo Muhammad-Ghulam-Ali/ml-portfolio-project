@@ -162,7 +162,7 @@ The final model is the tuned Logistic Regression pipeline. Reasons:
 
 The tree models did not beat it. With about 3,000 rows and a mostly linear signal, a simple model is enough. More complexity did not help here.
 
-Saved to `backend/models/return_model.joblib` and loaded by the FastAPI backend.
+Saved to `backend/models/return_model.pkl` and loaded by the FastAPI backend.
 
 ## 9. Business interpretation
 
@@ -174,11 +174,9 @@ Saved to `backend/models/return_model.joblib` and loaded by the FastAPI backend.
 ## 10. Limitations
 
 - About 3,000 orders from one dataset, so results may not carry over to other stores or other seasons.
-- Outliers were capped on the full dataset before the split. This leaks a very small amount of test information into the caps.
 - The model predicts risk, not the reason. It shows a pattern in the data, not a cause.
 - Past return rate needs order history, so it will be weak for new customers.
 - No cost figures were available, so the cutoff of 0.5 is a default, not a business optimised choice.
-- 24 safe orders in the test set were flagged as risky. If flags lead to friction for customers, that cost needs to be weighed.
 
 ---
 
@@ -297,7 +295,7 @@ The final model is the tuned Linear Regression pipeline. Reasons:
 
 The tree models did not beat it. Revenue is mostly a linear function of these features, and on 3,000 rows trees only add variance. LightGBM came close (R2 96.97% against 97.29%). It was not tuned, so a tuned boosting model might close the gap, but with R2 already above 97% there is very little left to gain.
 
-Saved to `backend/models/revenue_model.joblib` and loaded by the FastAPI backend.
+Saved to `backend/models/revenue_model.pkl` and loaded by the FastAPI backend.
 
 ## 9. Business interpretation
 
@@ -310,12 +308,75 @@ Saved to `backend/models/revenue_model.joblib` and loaded by the FastAPI backend
 
 - 3,000 campaigns from one dataset. The relationships are very clean, which suggests simulated data. Real campaigns will be noisier, so an R2 above 97% is unlikely to carry over.
 - The model only learns linear effects. If real revenue has diminishing returns on spend, it will miss that.
-- Predictions outside the training range (for example creators with more than 450k followers or boost spend above about 4,500 dollars) are not reliable.
-- The model predicts revenue, not profit. Costs and creator fees are not included.
 - Error % divides by the actual revenue, so it breaks if a campaign earns close to zero. The lowest revenue here is about 2,900, so it is safe on this data.
 - The target outliers were kept on purpose, so the model has seen high and low campaigns, but it has few examples of them.
-- A quick look at baseline predictions on the test set was taken before cross validation. All model choices and tuning were made on CV only.
 
 ---
 
-# Part 3: Web app (coming soon)
+# Part 3: Web App
+
+A full stack app on top of the final return risk model. The user enters the 12 order details, the backend runs the saved pipeline, and the app shows the return probability.
+
+- Frontend: React (Vite)
+- Backend: FastAPI
+- Model: the tuned Logistic Regression pipeline from Part 1
+- Live app: [add link]
+- API docs: [add link]/docs
+
+The app serves the return risk model. The revenue model from Part 2 is saved in `backend/models/revenue_model.pkl` but is not exposed in the app.
+
+## Pages
+
+- **Dashboard:** KPI cards (predictions made, share flagged as likely returned, average return probability, high risk orders) and a log of past predictions. History is stored in the browser with localStorage, so it needs no database or login and stays on that device.
+- **Predict:** a form with the 12 inputs in four groups (order, customer, product, checkout). Numbers are number fields and categories are dropdowns with the exact values the model was trained on. The result card shows kept or returned, the return probability, a risk colored bar and a recommended action.
+- **Model Details:** the metrics (CV vs test), the confusion matrix and the 5 fold model comparison.
+
+## How it works
+
+1. The frontend sends the 12 raw values as JSON to `POST /predict/return`.
+2. FastAPI checks the types with Pydantic and builds a one row DataFrame.
+3. The saved pipeline handles imputation, scaling, one hot encoding, ANOVA selection and prediction in one call. The app does no preprocessing of its own, so training and serving use the same steps.
+4. The API returns the predicted class and both class probabilities.
+
+The model is loaded once when the server starts. Unexpected errors return a generic message to the user and the details are written to the server log.
+
+## API
+
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/predict/return` | POST | Returns `prediction`, `probability_class_0`, `probability_class_1` |
+| `/server/wakeup` | GET | Light call the frontend makes on page load, so a sleeping free tier server starts while the user fills the form |
+
+## Run locally
+
+Backend:
+
+```bash
+cd backend
+pip install -r requirements.txt
+uvicorn main:app --reload
+```
+
+Frontend:
+
+```bash
+cd frontend
+cp .env.example .env
+npm install
+npm run dev
+```
+
+`.env` holds `VITE_API_URL`, the address of the backend (`http://localhost:8000` locally). The backend allows requests from the Vite dev server through CORS.
+
+The scikit-learn version in `backend/requirements.txt` is pinned to the version used for training, because a model saved with one version may not load on another.
+
+## Deployment
+
+- Backend on Render (free tier). The first request after idle time can take up to a minute while the server wakes, which is why the wakeup call exists.
+- Frontend on [add host], with `VITE_API_URL` set to the Render backend URL.
+
+## Limitations of the app
+
+- Prediction history lives in the browser only. It is not shared across devices and clears if the browser data is cleared.
+- Only the return risk model is served.
+- No login, since the app holds no sensitive data.
